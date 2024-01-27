@@ -5,23 +5,24 @@
 """
 import os
 import os.path as op
-
-from psutil import disk_partitions; opj=op.join
-from pathlib import Path
-
 import pickle as pkl
-from tqdm.auto import tqdm
-
-import numpy as np
 from math import floor, log10
+from pathlib import Path
 
 import matplotlib
 import matplotlib as mpl
 import matplotlib.pyplot as plt
-from matplotlib.ticker import AutoLocator
+import numpy as np
 from cmcrameri import cm as cmcr
+from matplotlib.ticker import AutoLocator
+from tqdm.auto import tqdm
+
+from psutil import disk_partitions; opj=op.join
+
+
+
 cmcr=cmcr.__dict__
-from IPython.core.display import HTML,display
+from IPython.core.display import HTML, display
 
 # Make matplotlib saved figures text text editable
 mpl.rcParams["svg.fonttype"] = 'none'
@@ -34,16 +35,35 @@ if 'Arial' in [f.name for f in matplotlib.font_manager.fontManager.ttflist]:
 else:
     print("Oh no! Arial isn't on your system. We strongly recommend that you install Arial for your aesthetic sanity.")
 
-from npyx.utils import phyColorsDic, npa, zscore, isnumeric, assert_iterable, save_np_array, pprint_dic, docstring_decorator
-from npyx.stats import fractile_normal, fractile_poisson
-
-from npyx.inout import read_metadata, extract_rawChunk, assert_chan_in_dataset, chan_map, predefined_chanmap
-from npyx.gl import get_units
-from npyx.merger import assert_multi, get_ds_ids
-from npyx.spk_wvf import get_depthSort_peakChans, wvf, wvf_dsmatch, get_peak_chan, templates
-from npyx.spk_t import trn, train_quality
-from npyx.corr import acg, ccg, gen_sfc, get_cm, scaled_acg, acg_3D, convert_acg_log
 from npyx.behav import align_times, get_processed_ifr, get_processed_popsync
+from npyx.corr import acg, acg_3D, ccg, convert_acg_log, gen_sfc, get_cm, scaled_acg
+from npyx.gl import get_units
+from npyx.inout import (
+    assert_chan_in_dataset,
+    chan_map,
+    extract_rawChunk,
+    predefined_chanmap,
+    read_metadata,
+)
+from npyx.merger import assert_multi, get_ds_ids
+from npyx.spk_t import train_quality, trn
+from npyx.spk_wvf import (
+    get_depthSort_peakChans,
+    get_peak_chan,
+    templates,
+    wvf,
+    wvf_dsmatch,
+)
+from npyx.stats import fractile_normal, fractile_poisson
+from npyx.utils import (
+    assert_iterable,
+    docstring_decorator,
+    isnumeric,
+    npa,
+    pprint_dic,
+    save_np_array,
+    zscore,
+)
 
 #%% plotting utilities ##############################################################################################
 
@@ -60,6 +80,8 @@ default_mplp_params = dict(
             ticklab_w='regular',
             ticklab_s=22,
             ticks_direction='out',
+            xlabelpad=0,
+            ylabelpad=0,
 
             # ticks default parameters
             xtickrot=0,
@@ -102,22 +124,75 @@ default_mplp_params = dict(
 )
 
 @docstring_decorator(pprint_dic(default_mplp_params))
-def mplp(fig=None, ax=None, figsize=None, axsize=None,
-         xlim=None, ylim=None, xlabel=None, ylabel=None,
-         xticks=None, yticks=None, xtickslabels=None, ytickslabels=None,
-         reset_xticks=None, reset_yticks=None,
-         xtickrot=None, ytickrot=None,
-         xtickha=None, xtickva=None, ytickha=None, ytickva=None,
-         axlab_w=None, axlab_s=None,
-         ticklab_w=None, ticklab_s=None, ticks_direction=None,
-         title=None, title_w=None, title_s=None,
-         lw=None, hide_top_right=None, hide_axis=None,
-         tight_layout=None, hspace=None, wspace=None,
-         show_legend=None, hide_legend=None, legend_loc=None,
-         saveFig=None, saveDir = None, figname=None, _format="pdf",
-         colorbar=None, vmin=None, vmax=None, cmap=None, cticks=None,
-         cbar_w=None, cbar_h=None, clabel=None, clabel_w=None, clabel_s=None, cticks_s=None,
-         hlines = None, vlines = None, lines_kwargs = None,
+def mplp(fig=None,
+         ax=None,
+         figsize=None,
+         axsize=None,
+         
+         xlim=None,
+         ylim=None,
+         xlabel=None,
+         ylabel=None,
+         xticks=None,
+         yticks=None,
+         xtickslabels=None,
+         ytickslabels=None,
+         reset_xticks=None,
+         reset_yticks=None,
+         
+         xtickrot=None,
+         ytickrot=None,
+         xtickha=None,
+         xtickva=None,
+         ytickha=None,
+         ytickva=None,
+         xlabelpad=None,
+         ylabelpad=None,
+         
+         axlab_w=None,
+         axlab_s=None,
+         ticklab_w=None,
+         ticklab_s=None,
+         ticks_direction=None,
+         
+         title=None,
+         title_w=None,
+         title_s=None,
+         
+         lw=None,
+         hide_top_right=None,
+         hide_axis=None,
+         transparent_background=None,
+         tight_layout=None,
+         
+         hspace=None,
+         wspace=None,
+         
+         show_legend=None,
+         hide_legend=None,
+         legend_loc=None,
+         
+         saveFig=None,
+         saveDir = None,
+         figname=None,
+         _format="pdf",
+         
+         colorbar=None,
+         vmin=None, vmax=None,
+         cmap=None,
+         cticks=None,
+         ctickslabels=None,
+         clim=None,
+         cbar_w=None,
+         cbar_h=None,
+         clabel=None,
+         clabel_w=None,
+         clabel_s=None,
+         cticks_s=None,
+         
+         hlines = None,
+         vlines = None,
+         lines_kwargs = None,
          prettify=True):
     """
     make plots pretty
@@ -173,6 +248,8 @@ def mplp(fig=None, ax=None, figsize=None, axsize=None,
         if xlabel is None: xlabel = ax.get_xlabel()
         if axlab_w is None: axlab_w = default_mplp_params['axlab_w']
         if axlab_s is None: axlab_s = default_mplp_params['axlab_s']
+        if xlabelpad is None: xlabelpad = default_mplp_params['xlabelpad']
+        if ylabelpad is None: ylabelpad = default_mplp_params['ylabelpad']
 
         # tick labels default parameters
         if ticklab_w is None: ticklab_w = default_mplp_params['ticklab_w']
@@ -232,8 +309,18 @@ def mplp(fig=None, ax=None, figsize=None, axsize=None,
         else: ax.axis('on')
 
     # Axis labels
-    if ylabel is not None: ax.set_ylabel(ylabel, weight=axlab_w, size=axlab_s, **hfont)
-    if xlabel is not None: ax.set_xlabel(xlabel, weight=axlab_w, size=axlab_s, **hfont)
+    if ylabel is not None:
+        ax.set_ylabel(ylabel,
+                      weight=axlab_w,
+                      size=axlab_s,
+                      labelpad=ylabelpad,
+                      **hfont)
+    if xlabel is not None:
+        ax.set_xlabel(xlabel,
+                      weight=axlab_w,
+                      size=axlab_s,
+                      labelpad=xlabelpad,
+                      **hfont)
 
     # Setup x/y limits BEFORE altering the ticks
     # since the limits will alter the ticks
@@ -307,6 +394,13 @@ def mplp(fig=None, ax=None, figsize=None, axsize=None,
         for sp in lw_spine_keys:
             ax.spines[sp].set_lw(lw)
 
+    # remove background
+    if transparent_background is not None:
+        if transparent_background:
+            ax.patch.set_alpha(0)
+        else:
+            ax.patch.set_alpha(1)
+
     # Optionally plot horizontal and vertical dashed lines
     if lines_kwargs is None: lines_kwargs = {}
     l_kwargs = default_mplp_params['lines_kwargs']
@@ -335,14 +429,16 @@ def mplp(fig=None, ax=None, figsize=None, axsize=None,
     if legend_loc is not None:
         assert len(legend_loc)==2 or len(legend_loc)==4,\
             "legend_loc must comply to the bbox_to_anchor format ( (x,y) or (x,y,width,height))."
-    if show_legend: plt.legend(bbox_to_anchor=legend_loc, prop={'family':'Arial'})
-    elif hide_legend: plt.legend([],[], frameon=False)
+    if show_legend: ax.legend(bbox_to_anchor=legend_loc, loc='lower left',
+                               prop={'family':'Arial'})
+    elif hide_legend: ax.legend([],[], frameon=False)
 
     if colorbar:
         assert vmin is not None and vmax is not None and cmap is not None,\
             "You must provide vmin, vmax and cmap to show a colorbar."
         fig = add_colorbar(fig, ax, None, vmin, vmax,
-                 cbar_w, cbar_h, cticks, clabel, clabel_w, clabel_s, cticks_s, cmap) 
+                 cbar_w, cbar_h, cticks, clabel, clabel_w, clabel_s, cticks_s, ctickslabels, cmap,
+                 clim=clim) 
 
     if prettify:
         fig.patch.set_facecolor('white')
@@ -352,6 +448,50 @@ def mplp(fig=None, ax=None, figsize=None, axsize=None,
         save_mpl_fig(fig, figname, saveDir, _format, dpi=500)
 
     return fig, ax
+
+phyColorsDic = {
+    0:(53./255, 127./255, 255./255),
+    1:(255./255, 0./255, 0./255),
+    2:(255./255,215./255,0./255),
+    3:(238./255, 53./255, 255./255),
+    4:(84./255, 255./255, 28./255),
+    5:(255./255,165./255,0./255),
+    -1:(0., 0., 0.),
+    }
+
+mpl_colors=plt.rcParams['axes.prop_cycle'].by_key()['color']
+
+DistinctColors20 = [[127,127,127],[0,0,143],[182,0,0],[0,140,0],[195,79,255],[1,165,202],[236,157,0],[118,255,0],[255,127,0],
+    [255,117,152],[148,0,115],[0,243,204],[72,83,255],[0,127,255],[0,67,1],[237,183,255],[138,104,0],[97,0,163],[92,0,17],[255,245,133]]
+DistinctColors20 = [[c[0]/255, c[1]/255, c[2]/255] for c in DistinctColors20]
+DistinctColors15 = [[127,127,127],[255,255,0],[0,0,143],[255,0,0],[50,255,255],[255,0,255],[94,0,33],[0,67,0],
+    [255,218,248],[0,178,0],[124,72,255],[211,145,0],[5,171,253],[126,73,0],[147,0,153]]
+DistinctColors15 = [[c[0]/255, c[1]/255, c[2]/255] for c in DistinctColors15]
+
+mark_dict = {
+".":"point",
+",":"pixel",
+"o":"circle",
+"v":"triangle_down",
+"^":"triangle_up",
+"<":"triangle_left",
+">":"triangle_right",
+"1":"tri_down",
+"2":"tri_up",
+"3":"tri_left",
+"4":"tri_right",
+"8":"octagon",
+"s":"square",
+"p":"pentagon",
+"*":"star",
+"h":"hexagon1",
+"H":"hexagon2",
+"+":"plus",
+"D":"diamond",
+"d":"thin_diamond",
+"|":"vline",
+"_":"hline"
+}
 
 def save_mpl_fig(fig, figname, saveDir, _format, dpi=500):
 
@@ -571,24 +711,24 @@ def n_decimals(x):
 
 def get_bestticks(start, end, step=None, light=False):
     """
-    Returns the best ticks for a given array of values (i.e. an sparser array of equally spaced values).
-    If the array if np.arange(10), the returned array will be np.arange(0,10,1).
-    If np.arange(50), the returned array will be np.arange(0,50,5). And so on.
+    Returns the best ticks for a start and end tick.
+    If step is specified, it will be the space between ticks.
+    If light is True, the step will be multiplied by 2.
     """
     span = end - start
     if step is None:
-        upper10=ceil_power10(span)
-        if span<=upper10/5:
-            step=upper10*0.01
-        elif span<=upper10/2:
-            step=upper10*0.05
+        upper10 = ceil_power10(span)
+        if span <= upper10/5:
+            step = upper10*0.01
+        elif span <= upper10/2:
+            step = upper10*0.05
         else:
-            step=upper10*0.1
+            step = upper10*0.1
     if light: step=2*step
-    assert step<span, f'Step {step} is too large for array span {span}!'
-    ticks=np.arange(myceil(start,step),myfloor(end,step)+step,step)
-    ticks=np.round(ticks, n_decimals(step))
-    if step==int(step):ticks=ticks.astype(np.int64)
+    assert step < span, f'Step {step} is too large for array span {span}!'
+    ticks = np.arange(myceil(start, step), myfloor(end, step) + step, step)
+    ticks = np.round(ticks, n_decimals(step))
+    if step == int(step): ticks = ticks.astype(np.int64)
 
     return ticks
 
@@ -598,11 +738,13 @@ def get_bestticks_from_array(arr, step=None, light=False):
     If the array if np.arange(10), the returned array will be np.arange(0,10,1).
     If np.arange(50), the returned array will be np.arange(0,50,5). And so on.
     """
-    arr = np.array(arr)
-    start, end = 0, len(arr)-1
-    ticks_i = get_bestticks(start, end, step, light)
-    ticks = arr[ticks_i]
-
+    # arr = np.array(arr)
+    # start, end = 0, len(arr)-1
+    # ticks_i = get_bestticks(start, end, step, light).astype(int)
+    # ticks = arr[ticks_i]
+    
+    ticks = get_bestticks(arr[0], arr[-1], step, light)
+    
     return ticks
 
 def get_labels_from_ticks(ticks):
@@ -817,7 +959,7 @@ def set_ax_size(ax,w,h):
 def hist_MB(arr, a=None, b=None, s=None,
             title='', xlabel='', ylabel='', legend_label=None,
             ax=None, color=None, alpha=1, figsize=None, xlim=None,
-            saveFig=False, saveDir='', _format='pdf', prettify=True,
+            prettify=True,
             style='bar', density=False, **mplp_kwargs):
     """
     Plot histogram of array arr.
@@ -868,54 +1010,250 @@ def hist_MB(arr, a=None, b=None, s=None,
     fig, ax = mplp(fig, ax, xlim=xlim, figsize=figsize,
                   prettify=prettify, show_legend=show_legend,
                   **mplp_kwargs)
-
-    if saveFig: save_mpl_fig(fig, title, saveDir, _format)
       
     return fig
 
-def paired_plot(df, cats, ylabel=None, xlabel=None, color="grey",
-               dodge=True, dodge_range=0.1,
-               figsize=(3,5), prettify=True, **mplp_kwargs):
+def paired_plot_df(df, columns, **kwargs):
     """
-    Plot scatter plot of each column of dataframe df against the first column,
-    in a paired-plot fashion (rows are linked by a line).
+    Wrapper of npyx.plot.paired_plot.
+    - df: pandas dataframe
+    - cats: iterable of strings, list of pandas dataframe features
+    """
+    assert np.all([c in df.columns for c in columns])
+    X = np.zeros((len(df), len(columns)))
+    for i, c in enumerate(columns):
+        X[:,i] = df.loc[:,c]
+
+    if 'xtickslabels' not in kwargs:
+        kwargs['xtickslabels'] = columns
+    #kwargs = kwargs
+    paired_plot(X, **kwargs)
+    
+def paired_plot(X, 
+                xtickslabels=None, 
+                labels=None,
+                labels_style=None,
+                
+                show_dot_edges=True,
+                pad_dots=True,
+                
+                jitter_scaler=0.2,
+                dotsize=60,
+                dotalpha=1,
+                dotpad=3,
+                
+                lineswidth=2,
+                linesalpha=0.8,
+                aspect_ratio=1.5,
+
+                markers=None,
+                colors=None,
+                labels_order=None,
+                labels_style_order=None,
+                
+                logscale=False,
+                add_histogram=False,
+                binsize=None,
+                hist_color='grey',
+                show_hist_mean=False,
+                
+                hist_kwargs={},
+                
+                **kwargs):
+    """
+    Function to make a paired plot (or 'slope graph').
+
     Arguments:
-        - df: pandas dataframe
-        - cats: list of str, columns of dataframe df
-        - ylabel: str, label of y axis
-        - xlabel: str, label of x axis
-        - color: str, color of points
-        - dodge: bool, whether to randomly offset points so that they do not overlap
-        - dodge_range: float, range of random offset
-        - figsize: (x,y) tuple, size of figure in inches
-        - prettify: bool, whether to apply mplp() prettification or not
-        - **mplp_kwargs: any additional formatting parameters, passed to mplp()
+        - X: (n_observations, n_features) np array, data to plot.
+             Each column is a feature, i.e. a plot category; each row is an observation.
+             The plot will display a scatter plot grouped in n_features categories,
+             where each observation is linked by a line across categories.
+        - xtickslabels: iterable of string, labels for x ticks.
+                        If passed, must be of length n_features.
+        - labels: iterable, data labels (groups of observations).
+                  If passed, must be of length n_observations.
+        - labels_style: same as labels, but denoted with different markers rather than colors
+                  
+        - show_dot_edges: bool, if True adds a black outline to scatter plot dots.
+        - pad_dots: bool, if True adds a padding around each scatter plot dot.
+    
+        - jitter_scaler: float, spread of x jitter in each category. Set to 0 to remove jitter.
+        - dotsize: int, size of scatter plot dots.
+        - dotalpha: float [0-1], transparency of scatter plot dots.
+        - dotpad: float, amount of padding around scatter plot dots if pad_dots is True.
+        
+        - lineswidth: float, width of lines between categories.
+        - linesalpha: float [0-1], transparency of lines between categories.
+        
+        - aspect_ratio: float, height/width figure aspect ratio.
+        - colors: list of matplotlib colors, order of colors to use for labels
+        - markers: list of str, order of matplotlib markers to use for labels_style
+        
+        - logscale:bool, whether to make y axis log scale or not.
+        
+        - add_histogram: bool, whether to add a histogram of the
+                         rightmost data (X[:,-1]) on the right.
+        - binsize: float, size of side histogram bins.
+        - hist_color: str, color of side histogram.
+        - hist_kwargs: dict, additional arguments to pass to side histogram mplp.
+        - show_hist_mean: bool, whether to add a line at the mean of the side histogram.
+
+        - **kwargs: any argument to npyx.plot.mplp()
     """
 
-    plt.figure()
+    if markers is None:
+        markers = ['o', '^', 's', 'D', '+', 'x', '*', '1', 'v', '<', '>']
+    if colors is None:
+        colors = get_ncolors_cmap(10)
 
-    x0=df[cats[0]]*0
-    l=len(x0)
+    n_obs, n_feat = X.shape
+    
+    # Define x coordinates
+    xticks = np.arange(n_feat)
+    x = xticks + np.zeros(n_obs)[:,None]
+    jitter = (np.random.random(n_obs * n_feat) - .5) * jitter_scaler
+    jitter = jitter.reshape((n_obs, n_feat))
+    x = x + jitter
+    
+    # Instantiate figure
+    figh = 6
+    figw = figh / aspect_ratio
+    
+    fig   = plt.figure(figsize=(figw, figh))
+    if add_histogram:
+        gs    = fig.add_gridspec(1, 3, wspace=0.5)
+        ax   = fig.add_subplot(gs[0, 0:2])
+    else:
+        gs    = fig.add_gridspec(1, 1)
+        ax   = fig.add_subplot(gs[0, 0])
+    
+    # lines and scatter padding
+    ax.plot(x.T, X.T,
+            color='k', alpha=linesalpha, lw=lineswidth,
+            zorder=-100)
+    if pad_dots:
+        bg_color = ax.get_facecolor()
+        ax.scatter(x.T, X.T,
+                   s=dotsize*dotpad,
+                   color=bg_color, 
+                   alpha=1, zorder=1)
+    
+    # scatter plot
+    edgealpha = 1 if show_dot_edges else 0
+    if (labels is None) and (labels_style is None):
+        ax.scatter(x.T, X.T,
+                   s=dotsize, alpha=dotalpha,
+                   lw=1, ec=[0,0,0,edgealpha],
+                  zorder=100)
+    else:
+        if labels is not None:
+            labels = npa(labels)
+            assert len(labels) == n_obs,\
+                f"You must pass {n_obs} labels, not {len(labels)}."
+            if labels_order is None:
+                unique_labels = np.unique(labels)
+            else:
+                assert np.all(np.isin(labels_order, labels)),\
+                    "Some labels in labels_order are not in labels!"
+                unique_labels = labels_order
+        if labels_style is not None:
+            labels_style = npa(labels_style)
+            assert len(labels_style) == n_obs,\
+                f"You must pass {n_obs} labels, not {len(labels_style)}."
+            if labels_style_order is None:
+                unique_label_styles = np.unique(labels_style)
+            else:
+                assert np.all(np.isin(labels_style_order, labels_style)),\
+                    "Some labels in labels_order are not in labels!"
+                unique_label_styles = labels_style_order
+        if labels_style is None:
+            for li, l in enumerate(unique_labels):
+                m = (l == labels)
+                ax.scatter(x[m].T, X[m].T,
+                           color = colors[li%len(colors)],
+                            s=dotsize, alpha=dotalpha,
+                            lw=1, ec=[0,0,0,edgealpha],
+                            label=f"{l} (n={m.sum()})",
+                            zorder=100)
+        elif labels is None:
+            for li, l in enumerate(unique_label_styles):
+                m = (l == labels_style)
+                ax.scatter(x[m].T, X[m].T,
+                        s=dotsize, alpha=dotalpha,
+                        color='grey',
+                        marker=markers[li%len(markers)],
+                        lw=1, ec=[0,0,0,edgealpha],
+                        label=f"{l} (n={m.sum()})",
+                        zorder=100)
+        else:
+            for li1, l1 in enumerate(unique_labels):
+                for li2, l2 in enumerate(unique_label_styles):
+                    m = (l1 == labels) & (l2 == labels_style)
+                    ax.scatter(x[m].T, X[m].T,
+                                color = colors[li1%len(colors)],
+                                marker = markers[li2%len(markers)],
+                                s=dotsize, alpha=dotalpha,
+                                lw=1, ec=[0,0,0,edgealpha],
+                                label=f"{l1}, {l2} (n=({m.sum()}))",
+                                zorder=100)
+    
+    # prettify
+    if logscale:
+        ax.set_yscale('log')
+    if xtickslabels is None:
+        xtickslabels = xticks
+    else:
+        assert len(xtickslabels) == n_feat,\
+            f"You must pass {n_feat} xtickslabels, not {len(xtickslabels)}."
+    xrot = 45 if max(len(str(lab)) for lab in xtickslabels) > 6 else 0
+        
+    if 'ylim' in kwargs: ax.set_ylim(kwargs['ylim'])
+    
+    # Eventually add histogram to the side
+    # representing the data on the rightmost column
+    if add_histogram:
+        ax2 = fig.add_subplot(gs[0, 2])
+        ylim = ax.get_ylim()
+        if binsize is None:
+            binsize = np.diff(ylim)/30
+        if logscale:
+            bins = np.logspace(np.log10(min(ylim)),
+                            np.log10(max(ylim)) ,
+                            abs(int(np.diff([ylim])//binsize)))
+            ax2.set_yscale('log')
+        else:
+            bins = np.arange(min(ylim), max(ylim)+binsize, binsize)
 
-    lines_x = np.zeros((len(cats), l))
-    lines = np.zeros((len(cats), l))
-    for i, cat in enumerate(cats):
-        x = x0+i
-        if dodge: x += np.random.uniform(-dodge_range, dodge_range, l)
-        y = df[cat]
-        assert len(y) == l
-        plt.scatter(x, y, color=color, edgecolor='k')
-
-        lines_x[i,:]=x
-        lines[i,:]=y
-
-    plt.plot(lines_x, lines, color=color, alpha=0.5, zorder=-1)
-
-    mplp(figsize=figsize, ylabel=ylabel, xlabel=xlabel,
-         xlim=[-0.5, i+0.5], xticks=np.arange(i+1), xtickslabels=cats,
-         prettify=prettify, **mplp_kwargs)
-
-
+        ax2.hist(X[:,-1], bins = bins,
+                color = hist_color, orientation = 'horizontal')
+        
+        hist_kwargs = hist_kwargs.copy() # NEVER edit a default argument directly
+        if 'ylim' not in hist_kwargs:
+            hist_kwargs['ylim'] = ylim
+            
+        if show_hist_mean:
+            mn = X[:,-1].mean()
+            ax2.text(ax2.get_xlim()[1],
+                    mn - 0.03*np.diff(hist_kwargs['ylim']),
+                    f"\u03bc = {mn:.1f}",
+                    va='center', ha='left', fontsize=14)
+            ax2.axhline(mn, ls='--', lw=2, c='k')
+            
+        if 'xlabel' not in hist_kwargs:
+            hist_kwargs['xlabel'] = f'Counts\n({xtickslabels[-1]})'
+            
+        mplp(fig, ax2,
+            yticks=ax.get_yticks(),
+            ytickslabels=['']*len(ax.get_yticks()),
+            xlabelpad=-50,
+            **hist_kwargs)
+    mplp(fig, ax,
+         xticks = xticks,
+         xtickslabels = xtickslabels,
+         xlim = [-0.5, n_feat-0.5],
+         show_legend = (labels is not None)|(labels_style is not None),
+         xtickrot=xrot,
+         **kwargs)
 #%% Stats plots ##############################################################################################
 
 def plot_pval_borders(Y, p, dist='poisson', Y_pred=None, gauss_baseline_fract=1, x=None, ax=None, color=None,
@@ -968,7 +1306,8 @@ def plot_pval_borders(Y, p, dist='poisson', Y_pred=None, gauss_baseline_fract=1,
 def plot_fp_fn_rates(train, period_s, amplitudes, good_spikes_m,
                      fp=None, fn=None, fp_t=None, fn_t=None, fp_threshold=0.05, fn_threshold=0.05,
                      good_fp_periods=None, good_fn_periods=None, title=None, axis=None,
-                     downsample=0.1):
+                     downsample=0.1,
+                     saveFig=False, saveDir=None, _format='pdf', figname=None):
     """
     - train: seconds
     - downsample: [0-1] value, if not None fraction of amplitudes to plot
@@ -1021,6 +1360,11 @@ def plot_fp_fn_rates(train, period_s, amplitudes, good_spikes_m,
     
     if title is not None:
         fig.suptitle(title)
+        
+    if saveFig:
+        if figname is None:
+            figname = "fp_fn_rates"
+        save_mpl_fig(fig, figname, saveDir, _format)
     if axis is None:
         return fig
     else:
@@ -1296,11 +1640,12 @@ def plt_wvf(waveforms, subcm=None, waveforms_std=None,
                 for tpl_i, tpl in enumerate(tplts):
                     ax[i].plot(x_tplts, tpl[:,i]*tpl_scalings[tpl_i], linewidth=1, color=(0,0,0), alpha=0.7, zorder=10000)
             if plot_mean:
-                ax[i].plot(x, datam[i, :], linewidth=2, color=color_dark, alpha=1)
+                ax[i].plot(x, datam[i, :], linewidth=1.7, color=color_dark, alpha=1)
             if plot_std:
-                ax[i].plot(x, datam[i, :]+waveforms_std[i,:], linewidth=1, color=color, alpha=0.5)
-                ax[i].plot(x, datam[i, :]-waveforms_std[i,:], linewidth=1, color=color, alpha=0.5)
-                ax[i].fill_between(x, datam[i, :]-waveforms_std[i,:], datam[i, :]+waveforms_std[i,:], facecolor=color, interpolate=True, alpha=0.2)
+                # outline on std is ugly
+                #ax[i].plot(x, datam[i, :]+waveforms_std[i,:], linewidth=1, color=color, alpha=0.5)
+                #ax[i].plot(x, datam[i, :]-waveforms_std[i,:], linewidth=1, color=color, alpha=0.5)
+                ax[i].fill_between(x, datam[i, :]-waveforms_std[i,:], datam[i, :]+waveforms_std[i,:], facecolor=color, interpolate=True, alpha=0.3)
             ax[i].set_ylim([ylim1, ylim2])
             ax[i].set_xlim([x[0], x[-1]])
             ax[i].spines['right'].set_visible(False)
@@ -1585,7 +1930,7 @@ def plot_raw_units(dp, times, units=[], channels=np.arange(384), offset=450,
                    whiten=False, nRangeWhiten=None, med_sub=False, nRangeMedSub=None, hpfilt=0, hpfiltf=300,
                    filter_forward=False, filter_backward=False,ignore_ks_chanfilt=0,
                    show_allyticks=0, yticks_jump=None, plot_ylabels=True, events=[], set0atEvent=1,
-                   again=False, ax=None):
+                   again=False, ax=None, enforced_peakChan=None):
     f'''
     Plot raw traces with colored overlaid spike times of specified units.
 
@@ -1660,7 +2005,10 @@ def plot_raw_units(dp, times, units=[], channels=np.arange(384), offset=450,
 
     for iu, u in enumerate(units):
         print('plotting unit {}...'.format(u))
-        peakChan=get_peak_chan(dp,u, use_template=True)
+        if enforced_peakChan is None:
+            peakChan=get_peak_chan(dp,u, use_template=True)
+        else:
+            peakChan=enforced_peakChan
         assert peakChan in channels, "WARNING the peak channel of {}, {}, is not in the set of channels plotted here!".format(u, peakChan)
         peakChan_rel=np.nonzero(peakChan==channels)[0][0]
         ch1, ch2 = max(0,peakChan_rel-Nchan_plot//2), min(rc.shape[0], peakChan_rel-Nchan_plot//2+Nchan_plot)
@@ -1690,6 +2038,185 @@ def plot_raw_units(dp, times, units=[], channels=np.arange(384), offset=450,
         save_mpl_fig(fig, rcn, saveDir, _format)
 
     return fig
+
+
+def plot_raw_trials(dp, window, trials, channel=None, units=None,
+                    y_offset=200, bg_color='k', lw=1, bg_alpha=1,
+                    spk_window=82, unit_colors=None, unit_lw=1.1,
+                    title=None, saveDir='~/Downloads', saveFig=0, _format='pdf',
+                    figsize=None, plot_baselines=False, events=None, event_tile=None,
+                    whiten=False, nRangeWhiten=None, med_sub=True, nRangeMedSub=None, hpfilt=0, hpfiltf=300,
+                    filter_forward=False, filter_backward=False, ignore_ks_chanfilt=0,
+                    yticks_jump=None, plot_ylabels=True,
+                    again=False, ax=None):
+    f'''
+    Plot raw traces on a given channel across trials
+    eventually with colored overlaid spike times of specified units.
+
+    Arguments:
+        - dp: str, path to dataset
+        - window: list of 2 floats, time window to plot for each trial (in ms)
+        - trials: list of floats, time of trials to plot (seconds)
+        - channel: int, channel to plot (default None: takes the peak channel of the first unit in units)
+        - units: list of ints, units to plot (default None: only plots background data)
+        
+        - y_offset: float, vertical offset between rows in uV
+        - bg_color: str, color of background trace
+        - lw: float, linewidth of background trace
+        - bg_alpha: float, alpha of background trace
+        
+        - spk_window: int, width of plotted unit spikes (in samples)
+        - unit_colors: list of colors, same length as 'units' (or None to default to matplotlib tab10)
+        - unit_lw: float, linewidth of unit spikes
+        
+        - title: str, figure title and overwrites figurename if saveFig
+        - saveDir: str, directory where to save figure
+        - saveFig: bool, whether to save figure
+        - _format: str, format of figure to save
+        
+        - figsize: tuple of 2 floats, size of figure in inches
+        - plot_baselines: bool, whether to plot dotted lines at 0 for every channel
+        - events: list of floats, times where to plot vertical lines within window, in seconds.
+        
+        - whiten: bool, whether to whiten the data across channels. If nRangeWhiten is not None,
+                  whitening matrix is computed with the nRangeWhiten closest channels.
+        - nRangeWhiten: int, see whiten.
+        - med_sub: bool, whether to median-subtract the data across channels. If nRangeMedSub is not none,
+                   median of each channel is computed using the nRangeMedSub closest channels.
+        - nRangeMedSub: int, see med_sub.
+        - hpfilt: bool, whether to high-pass filter the data, using a 3 nodes butterworth filter of cutoff frequency hpfiltf.
+        - hpfiltf: see hpfilt
+        - filter_forward: bool, whether to filter forward
+        - filter_backward: bool, whether to filter backward
+        - ignore_ks_chanfilt: bool, whether to ignore the filtered channelmap from kilosort.
+        
+        - show_allyticks: bool, whether to show a y tick label for every trial
+        - yticks_jump: int, plot ytick label every yticks_jump ticks
+        - plot_ylabels: bool, whether to plot y labels
+        
+        - again: bool, whether to recompute data rather than loading it from disc
+        - ax: matplotlib axes, where plot will be plotted if provided
+    '''
+
+    # Define channel of interest
+    if channel is None:
+        assert units is not None, "If you do not provide any units to overlay, you need to specify the peak channel!"
+        channel = get_peak_chan(dp, units[0])
+    channel = assert_chan_in_dataset(dp, [channel], ignore_ks_chanfilt)[0]
+    
+    # Load raw data
+    meta = read_metadata(dp)
+    fs = meta['highpass']['sampling_rate']
+    reclen = meta['recording_length_seconds']
+    traces = []
+    for tr in trials:
+        
+        times = [tr + window[0]/1000, tr + window[1]/1000 + 1/fs]
+        assert times[0]>=0, f"Trial times cannot be negative {tr}-{window[0]}={times[0]}!"
+        assert times[1]<=reclen, f"Trial times cannot occur after the end of the recording ({tr}+{window[1]}={times[1]} does)!"
+        rc = extract_rawChunk(dp, times, channel, 'highpass', False,
+                        whiten, med_sub, hpfilt, hpfiltf, filter_forward, filter_backward,
+                        nRangeWhiten, nRangeMedSub, False,
+                        ignore_ks_chanfilt, True, 0, 1, again)
+        traces.append(rc.ravel())
+    traces = np.array(traces)
+    traces = traces[::-1, :] # first trial up
+
+    # Offset data
+    plt_offsets = np.arange(0, len(traces)*y_offset, y_offset)
+    traces += plt_offsets[:,np.newaxis]
+    
+    # Initialize figure
+    if ax is None:
+        if figsize is None: figsize = (10, len(trials) * 2)
+        fig, ax = plt.subplots(figsize=figsize)
+    else:
+        fig = ax.get_figure()
+    
+    # Plot background traces
+    traces_t = np.arange(window[0], window[1] + 1000/fs, 1000/fs).round(5)
+    traces_t = np.tile(traces_t, (traces.shape[0], 1))
+    if traces_t.shape[1] == traces.shape[1] + 1: traces_t = traces_t[:,:-1]
+    assert traces_t.shape[1] == traces.shape[1],\
+        f"traces is of shape {traces.shape} when traces_t is of shape {traces_t.shape}!"
+    ax.plot(traces_t.T, traces.T, linewidth=lw, color=bg_color, alpha=bg_alpha, zorder=0)
+    
+    # Eventually plot baselines and events
+    if plot_baselines:
+        for i in np.arange(traces.shape[0]):
+            y=i*y_offset
+            ax.plot([traces_t[0,0], traces_t[0,-1]], [y, y], color=(0.5, 0.5, 0.5),
+                    linestyle='--', linewidth=1, zorder=-100)
+    if events is not None:
+        for e in events:
+            assert e>=window[0] and e<= window[1], f"Event {e} is not within window {window}!"
+            ax.axvline(e, color=(0.3, 0.3, 0.3), linestyle='--', linewidth=2, zorder=1)
+    ax.axvline(0, color=(0.3, 0.3, 0.3), linestyle='--', linewidth=2, zorder=10)
+    
+    if event_tile is not None:
+        assert len(event_tile)==2, "event_tile should be a list of 2 floats!"
+        assert event_tile[0]>=window[0] and event_tile[1]<= window[1], f"Event tile {event_tile} is not within window {window}!"
+        y1 = traces.max() + y_offset/2 - y_offset/6
+        y2 = traces.max() + y_offset/2
+        ax.fill_between([event_tile[0], event_tile[1]], [y1, y1], [y2, y2],
+                        color='dodgerblue', alpha=1)
+
+    # Eventually plot overlaid units
+    if units is not None:
+    
+        assert assert_iterable(units)
+        assert len(units)>=1
+
+        if unit_colors is not None:
+            assert len(unit_colors)==len(units), 'The length of the list of colors should be the same as the list of units!!'
+            for ic, c in enumerate(unit_colors):
+                if isinstance(c, str): unit_colors[ic] = to_rgb(c)
+        else:
+            unit_colors = [get_ncolors_cmap(10, 'tab10')[u%10] for u in np.arange(len(units))]
+
+        for iu, u in enumerate(units):
+            print(f"Plotting unit {u}...")
+            spike_train = trn(dp, u, enforced_rp=1) # in samples
+            for tri, tr in enumerate(trials):
+                
+                traces_t_samples = traces_t[tri] * fs / 1000 # form ms to samples
+                tr = tr * fs # from s to samples
+                
+                spikes_to_plot = spike_train[(spike_train > (tr + (window[0] * fs / 1000) + spk_window//2)) &\
+                                             (spike_train < (tr + (window[1] * fs / 1000) - spk_window//2))]
+                spikes_to_plot = spikes_to_plot - tr # set t1 as time 0
+                print(f"Found {len(spikes_to_plot)} spikes to plot for trial {tri}.")
+                
+                all_t_spk_t = np.array([])
+                all_t_spk_v = np.array([])
+                for spike in spikes_to_plot:
+                    t_spk_slice = (traces_t_samples >= spike - spk_window//2) & (traces_t_samples <= spike + spk_window//2)
+                    all_t_spk_t = np.append(np.append(all_t_spk_t, [np.nan]), traces_t[tri, t_spk_slice])
+                    all_t_spk_v = np.append(np.append(all_t_spk_v, [np.nan]), traces[len(traces)-1-tri, t_spk_slice])
+                ax.plot(np.array(all_t_spk_t).ravel(), np.array(all_t_spk_v).ravel(),
+                        linewidth=unit_lw, color=unit_colors[iu], alpha=1, zorder=0)
+
+    # Plot formatting
+    y_mask = np.ones(traces.shape[0], dtype=bool)
+    if yticks_jump is not None:
+        assert isinstance(yticks_jump, int), "yticks_jump should be an int!"
+        y_mask[::yticks_jump] = False
+    yticks = plt_offsets[y_mask]
+    ytickslabels = np.arange(traces.shape[0])[y_mask] if plot_ylabels else [''] * len(yticks)
+    xticks = get_bestticks_from_array(np.arange(window[0], window[1]+1), step=None, light=True)
+    xtickslabels = xticks
+    ylim = [traces.min()-y_offset/2, traces.max()+y_offset/2]
+
+    # figure saving
+    figname = f'raw_trials_{Path(dp).name}_{units}_{window}'
+    if whiten: figname += f'_whitened_{nRangeWhiten}' 
+    if med_sub: figname += f'_medsub_{nRangeMedSub}'
+    if hpfilt: figname += f"_filt_{hpfiltf}_{filter_forward}_{filter_backward}"
+    if title is not None: rcn=title
+    
+    mplp(xticks=xticks, yticks=yticks, xtickslabels=xtickslabels, ytickslabels=ytickslabels[::-1],
+         xlabel='Time (ms)', ylabel='Trial #', ylim=ylim, xlim=window,
+         saveFig=saveFig, saveDir=saveDir, _format=_format, figname=figname)
 
 #%% Peri-event plots ##############################################################################################
 
@@ -2746,6 +3273,7 @@ def plot_ccg(dp, units, cbin=0.2, cwin=80, normalize='mixte',
     saveDir=op.expanduser(saveDir)
 
     if trains is None:
+        # order of channels is swapped - fix it
         bChs = get_depthSort_peakChans(dp, units=units, use_template=use_template)[:,1].flatten()
     else:
         bChs = None
@@ -3028,8 +3556,8 @@ def imshow_cbar(im, origin='top', xevents_toplot=[], yevents_toplot=[], events_c
 
 def add_colorbar(fig, ax, mappable=None, vmin=None, vmax=None,
                  width=0.01, height=0.5, cticks=None,
-                 clabel=None, clabel_w='regular', clabel_s=20, cticks_s=16,
-                 cmap=None, pad = 0.01):
+                 clabel=None, clabel_w='regular', clabel_s=20, cticks_s=16, ctickslabels=None,
+                 cmap=None, pad = 0.01, clim=None):
     """
     Add colorbar to figure with a predefined axis.
     
@@ -3061,18 +3589,25 @@ def add_colorbar(fig, ax, mappable=None, vmin=None, vmax=None,
 
     # add colorbar
     fig.colorbar(mappable, cax=cbar_ax, ax=ax,
-             orientation='vertical', label=clabel,
-             ticks=cticks, use_gridspec=True)
+             orientation='vertical', label=clabel, use_gridspec=True)
+
 
     # format colorbar ticks, labels etc
+    if ctickslabels is None:
+        ctickslabels = cticks
+    else:
+        assert len(ctickslabels)==len(cticks),\
+            f"ctickslabels should have the same length as cticks ({len(cticks)})!" 
     if clabel is not None:
         cbar_ax.yaxis.label.set_font_properties(mpl.font_manager.FontProperties(family='arial', weight=clabel_w, size=clabel_s))
         cbar_ax.yaxis.label.set_rotation(-90)
         cbar_ax.yaxis.label.set_va('bottom')
         cbar_ax.yaxis.label.set_ha('center')
         cbar_ax.yaxis.labelpad = 5
-    cbar_ax.yaxis.set_ticklabels(cticks, ha='left')
+    cbar_ax.yaxis.set_ticks(cticks)
+    cbar_ax.yaxis.set_ticklabels(ctickslabels, ha='left')
     cbar_ax.yaxis.set_tick_params(pad=5, labelsize=cticks_s)
+    cbar_ax.set_ylim(clim)
 
     fig.canvas.draw()
     set_ax_size(ax,*fig.get_size_inches())

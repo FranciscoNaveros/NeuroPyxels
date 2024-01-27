@@ -18,23 +18,19 @@ cache_memory = Memory(cachedir, verbose=0)
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from scipy.optimize import curve_fit
-from scipy.stats import iqr, norm
-
 from npyx.gl import check_periods, get_npyx_memory, get_units
 from npyx.inout import read_metadata
 from npyx.utils import (
     assert_float,
     assert_int,
+    cache_validation_again,
     docstring_decorator,
     npa,
     smooth,
     thresh_consec,
 )
-
-def cache_validation_again(metadata):
-    # Only retrieve cached results for calls that are not flagged with again
-    return metadata["input_args"]["again"] == False
+from scipy.optimize import curve_fit
+from scipy.stats import iqr, norm
 
 
 def ids(dp, unit, sav=True, verbose=False, periods='all', again=False, enforced_rp=-1):
@@ -56,15 +52,15 @@ def ids(dp, unit, sav=True, verbose=False, periods='all', again=False, enforced_
     '''
 
     dp = Path(dp)
-    assert unit in get_units(dp), 'WARNING unit {} not found in dataset {}!'.format(unit, dp)
+    assert unit in get_units(dp), f'WARNING unit {unit} not found in dataset {dp}!'
     # Search if the variable is already saved in dp/routinesMemory
     dpnm = get_npyx_memory(dp)
 
     fn=f'ids{unit}_{enforced_rp}.npy'
     if op.exists(Path(dpnm,fn)) and not again:
-        if verbose: print("File {} found in routines memory.".format(fn))
+        if verbose:
+            print(f"File {fn} found in routines memory.")
         indices = np.asarray(np.load(Path(dpnm,fn)), dtype='int64')
-    # if not, compute it
     else:
         if verbose: print(f"File {fn} not found in routines memory. Will be computed from source files.")
         if not (assert_int(unit)|assert_float(unit)): raise TypeError(f'WARNING unit {unit} type ({type(unit)}) not handled!')
@@ -86,7 +82,7 @@ def ids(dp, unit, sav=True, verbose=False, periods='all', again=False, enforced_
         # Save it
         if sav:
             np.save(dpnm/fn, indices)
-            
+
     # Optional selection of spies without duplicates
     dp_source = npyx.merger.get_source_dp_u(dp, unit)[0]
     fs=read_metadata(dp_source)["highpass"]['sampling_rate']
@@ -99,7 +95,7 @@ def ids(dp, unit, sav=True, verbose=False, periods='all', again=False, enforced_
     # Always computed because cannot reasonably be part of file name.
     periods = check_periods(periods)
     if not isinstance(periods, str): # check_periods ensures that it should be 'all' if it is a string
-        sec_bool=np.zeros(len(train), dtype=np.bool)
+        sec_bool=np.zeros(len(train)).astype(bool)
         for section in periods:
             sec_bool[(train>=section[0]*fs)&(train<=section[1]*fs)]=True # comparison in samples
         indices=indices[sec_bool]
@@ -114,9 +110,7 @@ def load_amplitudes(dp, unit, verbose=False, periods='all', again=False, enforce
     {ids.__doc__}'''
     dp = Path(dp)
     unit_ids = ids(dp, unit, True, verbose, periods, again, enforced_rp)
-    amps = np.load(dp/'amplitudes.npy')[unit_ids]
-    
-    return amps
+    return np.load(dp/'amplitudes.npy')[unit_ids]
 
 @cache_memory.cache(cache_validation_callback=cache_validation_again)
 def trn(dp, unit, sav=True, verbose=False, periods='all', again=False, enforced_rp=0):
@@ -144,7 +138,8 @@ def trn(dp, unit, sav=True, verbose=False, periods='all', again=False, enforced_
 
     fn=f'trn{unit}_{enforced_rp}+.npy'
     if (dpnm/fn).exists() and not again:
-        if verbose: print("File {} found in routines memory.".format(fn))
+        if verbose:
+            print(f"File {fn} found in routines memory.")
         try: train = np.load(dpnm/fn) # handling of weird allow_picke=True error
         except: pass
 
@@ -172,7 +167,7 @@ def trn(dp, unit, sav=True, verbose=False, periods='all', again=False, enforced_
     periods = check_periods(periods)
     periods = periods * fs # convert from seconds to samples
     if not isinstance(periods, str): # check_periods ensures that it should be 'all' if it is a string
-        sec_bool = np.zeros(len(train), dtype=np.bool)
+        sec_bool = np.zeros(len(train)).astype(bool)
         for section in periods:
             sec_bool = sec_bool|(train>=section[0])&(train<=section[1])
         train=train[sec_bool]
@@ -183,8 +178,7 @@ def duplicates_mask(t, enforced_rp=0, fs=30000):
     '''
     - t: in samples,sampled at fs Hz
     - enforced_rp: in ms'''
-    duplicate_m = np.append([False], np.diff(t)<=enforced_rp*fs/1000)
-    return duplicate_m
+    return np.append([False], np.diff(t)<=enforced_rp*fs/1000)
 
 def enforce_rp(t, enforced_rp=0, fs=30000):
     '''
@@ -222,9 +216,7 @@ def inst_cv2(t):
 
     isint = np.diff(t)
 
-    cv2 = 2 * np.abs(isint[1:] - isint[:-1]) / (isint[1:] + isint[:-1])
-
-    return cv2
+    return 2 * np.abs(isint[1:] - isint[:-1]) / (isint[1:] + isint[:-1])
 
 @cache_memory.cache
 def mean_firing_rate(t, exclusion_quantile=0.005, fs=30000):
@@ -308,11 +300,11 @@ def binarize(X, bin_size, fs, rec_len=None):
 
     return Xb
 
+@cache_memory.cache(cache_validation_callback=cache_validation_again)
 def trnb(dp, u, b, periods='all', again=False):
     '''
     ********
-    routine from routines_spikes
-    computes binarized spike train (1, Nspikes) - int64, in samples
+    Computes binarized spike train (1, Nspikes) - int64, in samples
     ********
 
     - dp (string): DataPath to the Neuropixels dataset.
@@ -355,7 +347,7 @@ def get_firing_periods(dp, u, b=1, sd=1000, th=0.02, again=False, train=None, fs
         t=np.asarray(train)
         assert t.ndim==1
 
-    periods = firing_periods(t, fs, t_end, b=1, sd=1000, th=0.02)
+    periods = firing_periods(t, fs, t_end, b=b, sd=sd, th=th)
 
     if sav:
         np.save(Path(dpnm,fn), periods)
@@ -369,14 +361,14 @@ def firing_periods(t, fs, t_end, b=1, sd=1000, th=0.02,
         - t: array of spike times, in samples
         - fs: sampling rate of spike times, in Hz
         - t_end: recording end time, in samples
-        - b: float, bin size i.e. temporal resolution of presence periods, in ms | Default 1
+        - b: float, bin size i.e. temporal resolution of presence periods, in ms | Default 1. minimum 0.01
         - sd: float, standard deviation of gaussian smoothing window, in ms | Default 1000
         - th: threshold to define presence, in fraction of mean firing rate
     Returns:
         - periods, in samples
     '''
     sav=False
-    if u is not None:
+    if u is not None and not return_smoothed_rate:
         sav=True
         assert dp is not None
         #assert len(trn(dp,u,0))==len(t), 'There seems to be a mismatch between the provided spike trains and the unit index.'
@@ -385,28 +377,30 @@ def firing_periods(t, fs, t_end, b=1, sd=1000, th=0.02,
         if op.exists(Path(dpnm,fn)) and not again:
             return np.load(Path(dpnm,fn))
 
-    assert 1<sd<100000
-    assert 0<=th<1
-    assert t.ndim==1
-    t     = np.asarray(t)
+    tbs = inst_firing_rate(t, fs, t_end, b, sd, again) # result is inst. firing rate in Hz - speed bottleneck
 
-    assert b>=1000/fs
-    tb    = binarize(t, b, fs, t_end)
-    sd    = int(sd/b) # convert from ms to bin units
-    b_s   = b/1000 # bin seconds
-    tbs   = smooth(tb, 'gaussian', sd=sd)/b_s # result is inst. firing rate in Hz - speed bottleneck
+    assert 0<=th
     fr_th = mean_firing_rate(t, 0.005, fs)*th
-
     periods = thresh_consec(tbs, fr_th, sgn=1, n_consec=0, exclude_edges=False, only_max=False, ret_values=False)
     if not any(periods): periods=[[0,len(tbs)-1]]
-    periods = (np.array(periods)*(b_s*fs)).astype(np.int64) # conversion from bins to samples
+
+    periods = (np.array(periods)*((b/1000)*fs)).astype(np.int64) # conversion from bins to samples
 
     if sav: np.save(Path(dpnm,fn), periods)
 
-    if return_smoothed_rate:
-        return periods, tbs
+    return (periods, tbs) if return_smoothed_rate else periods
 
-    return periods
+@cache_memory.cache(cache_validation_callback=cache_validation_again)
+def inst_firing_rate(t, fs, t_end, b=1, sd=1000, again=False):
+    assert 1<sd<100000
+    assert t.ndim==1
+    t     = np.asarray(t)
+
+    assert b>=10/fs
+    tb    = binarize(t, b, fs, t_end)
+    sd    = int(sd/b) # convert from ms to bin units
+    b_s   = b/1000 # bin seconds
+    return smooth(tb, 'gaussian', sd=sd)/b_s
 
 def find_stable_recording_period(t, fs, t_end, target_period = 30,
                                  b=1000, sd=10000, minimum_fr = 0.4,
@@ -479,7 +473,7 @@ def train_quality(dp, unit, period_m=[0,20],
                   use_or_operator = True,
                   violations_ms = 0.8, fp_threshold = 0.05, fn_threshold = 0.05,
                   again = False, save = True, verbose = False, plot_debug = False,
-                  enforced_rp = 0):
+                  enforced_rp = 0, saveFig=False, saveDir=None, _format='png'):
     """
     Subselect spike times which meet two criteria:
         low number of 'missed spikes' (false negatives)
@@ -532,6 +526,10 @@ def train_quality(dp, unit, period_m=[0,20],
         - save: bool, whether to save result to npyxMemory for future fast reloading
         - verbose: bool, whether to print extra information for debugging purposes.
         - enforced_rp: float, enforced refractory period in ms (if 2 spikes are closer than enforced_rp ms, only the first one  is kept.)
+        - plot_debug: bool, whether to plot the fp/fn rates and the spikes that passed the filter.
+        - saveFig: bool, whether to save the debug plot.
+        - saveDir: str, path to save the debug plot.
+        - _format: str, format to save the debug plot.
     
     Returns:
         - good_spikes_m: mask of spikes belonging to the intersection of the chunks with low enough fp/fn rates.
@@ -542,9 +540,9 @@ def train_quality(dp, unit, period_m=[0,20],
     dp = Path(dp)
 
     # Hard-coded parameters
-    c_bin = 0.2
-    c_win = 100
-    n_bins_acg_baseline=80 # from start and end of acg window
+    # c_bin = 0.2
+    # c_win = 100
+    # n_bins_acg_baseline=80 # from start and end of acg window
     n_spikes_threshold = 300
     fs = 30_000
     title = f"{unit}, {dp.name}" # for plot_debug
@@ -591,7 +589,9 @@ def train_quality(dp, unit, period_m=[0,20],
             npyx.plot.plot_fp_fn_rates(unit_train, period_s, unit_amp, good_spikes_m,
                      None, None, None,None,
                      fp_threshold, fn_threshold,
-                     good_fp_start_end_plot, good_fn_start_end_plot, title)
+                     good_fp_start_end_plot, good_fn_start_end_plot, title,
+                     saveFig=saveFig, saveDir=saveDir, _format=_format,
+                     figname=f"fp_fn_{unit}_{period_m}")
         
         return good_spikes_m, good_fp_start_end.tolist(), good_fn_start_end.tolist()
     
@@ -723,7 +723,9 @@ def train_quality(dp, unit, period_m=[0,20],
             npyx.plot.plot_fp_fn_rates(unit_train, period_s, unit_amp, good_spikes_m,
                      fp_toplot, fn_toplot, chunk_fp_t, chunk_fn_t,
                      fp_threshold, fn_threshold,
-                     good_fp_start_end, good_fn_start_end, title)
+                     good_fp_start_end, good_fn_start_end, title,
+                     saveFig=saveFig, saveDir=saveDir, _format=_format,
+                     figname=f"fp_fn_{unit}_{period_m}")
 
         return good_spikes_m, good_fp_start_end, good_fn_start_end
     
@@ -737,7 +739,9 @@ def train_quality(dp, unit, period_m=[0,20],
             npyx.plot.plot_fp_fn_rates(unit_train, period_s, unit_amp, good_spikes_m,
                      fp_toplot, fn_toplot, chunk_fp_t, chunk_fn_t,
                      fp_threshold, fn_threshold,
-                     None, None, title)
+                     None, None, title,
+                     saveFig=saveFig, saveDir=saveDir, _format=_format,
+                     figname=f"fp_fn_{unit}_{period_m}")
             
         return good_spikes_m, [0], [0]
 
@@ -749,7 +753,7 @@ def trn_filtered(dp, unit, period_m=[0,20],
                   violations_ms = 0.8, fp_threshold = 0.05, fn_threshold=0.05,
                   use_consecutive = False, consecutive_n_seconds = 180,
                   again = False, save = True, verbose = False, plot_debug = False,
-                  enforced_rp=0):
+                  enforced_rp=0, saveFig=False, saveDir=None, _format='pdf'):
     """
     Returns spike times (in sample) meeting the false positive and false negative criteria.
     Mainly wrapper of train_quality().
@@ -776,14 +780,14 @@ def trn_filtered(dp, unit, period_m=[0,20],
     good_spikes_m, good_fp_start_end, good_fn_start_end = train_quality(dp, unit, period_m,
                     fp_chunk_span, fp_chunk_size, fn_chunk_span, fn_chunk_size, use_or_operator,
                     violations_ms, fp_threshold, fn_threshold, again, save, verbose, plot_debug,
-                    enforced_rp=enforced_rp)
+                    enforced_rp, saveFig, saveDir, _format)
 
     # use spike times themselves to define beginning and end of good Sections
     # as the FP and FN sections do not necessarily overlap
     good_sections = good_sections_from_mask(good_spikes_m, t_s)
-    
+
     if len(good_sections)>0:#
-        total_good_sections = sum([s[1]-s[0] for s in good_sections])
+        total_good_sections = sum(s[1]-s[0] for s in good_sections)
         if use_consecutive:
             # get the longest consecutive section of time that passes
             # both our criteria
@@ -797,10 +801,9 @@ def trn_filtered(dp, unit, period_m=[0,20],
             if len(consecutive_good_chunk) > consecutive_n_seconds:
                 good_spikes_m = (t_s>consecutive_good_chunk[0])&(t_s<consecutive_good_chunk[-1]+1)
                 return t[good_spikes_m], good_spikes_m
-        else:
-            if total_good_sections > consecutive_n_seconds:
-                return t[good_spikes_m], good_spikes_m
-        
+        elif total_good_sections > consecutive_n_seconds:
+            return t[good_spikes_m], good_spikes_m
+
     if verbose: print('No consecutive section passed the filters')
     return np.array([0]), (t*0).astype(bool)
 
@@ -854,8 +857,7 @@ def gaussian_cut(x, a, mu, sigma, x_cut):
 
 
 def curve_fit_(x, num, p1):
-    pop_t = curve_fit(gaussian_cut, x, num, p1, maxfev=10000)
-    return pop_t
+    return curve_fit(gaussian_cut, x, num, p1, maxfev=10000)
 
 def ampli_fit_gaussian_cut(x, n_bins):
     # inputs: vector we want to estimate where the missing values start
@@ -872,9 +874,9 @@ def ampli_fit_gaussian_cut(x, n_bins):
     mode_seed = bins[np.where(num == max(num))]
     #mode_seed = bins[np.argmax(num)]
     # find the bin width
-    bin_steps = np.diff(bins[0:2])[0]
+    bin_steps = np.diff(bins[:2])[0]
     #get the mean values of each bin
-    x = bins[0:len(bins) - 1] + bin_steps / 2
+    x = bins[:-1] + bin_steps / 2
     # get the value of the start of the first bin
     next_low_bin = x[0] - bin_steps
     #next_low = bins[0] - bin_steps/2
@@ -931,29 +933,20 @@ def estimate_bins(x, rule):
 
     # Freedman-Diaconis rule
     if rule == 'Fd':
-
-        data = np.asarray(x, dtype=np.float_)
-        iqr_ = iqr(data, scale=1, nan_policy="omit")
-        n = data.size
-        bw = (2 * iqr_) / np.power(n, 1 / 3)
-        datmin= min(data)
-        datmax = max(data)
-        datrng = datmax - datmin
-        bins = int(datrng/bw + 1)
-
-        # q75, q25 = np.percentile(x, [75, 25])
-        # iqr_ = q75 - q25
-        # print('iqr', iqr_)
-        # h = 2 * iqr_ * (n ** (-1/3))
-        # print('h', h)
-        # b = int(round((maxi-mini)/h, 0))
-
-        return bins
-
-    # Square-root choice
+        return Freedman_Diaconis_bin_estimate(x)
     elif rule == 'Sqrt':
-        b = int(np.sqrt(n))
-        return b
+        return int(np.sqrt(n))
+
+
+def Freedman_Diaconis_bin_estimate(x):
+    data = np.asarray(x, dtype=np.float_)
+    iqr_ = iqr(data, scale=1, nan_policy="omit")
+    n = data.size
+    bw = (2 * iqr_) / np.power(n, 1 / 3)
+    datmin= min(data)
+    datmax = max(data)
+    datrng = datmax - datmin
+    return int(datrng/bw + 1)
 
 # circular import
 import npyx.merger
